@@ -6,7 +6,7 @@ export class Conversation {
     if (systemPrompt) {
       this.messages.push({
         role: "system",
-        content: systemPrompt,
+        content: systemPrompt
       });
     }
   }
@@ -14,14 +14,14 @@ export class Conversation {
   addUserMessage(content: string) {
     this.messages.push({
       role: "user",
-      content,
+      content
     });
   }
 
   addAssistantMessage(content: string) {
     this.messages.push({
       role: "assistant",
-      content,
+      content
     });
   }
 

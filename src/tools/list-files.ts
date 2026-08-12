@@ -1,9 +1,21 @@
 import { readdir } from "node:fs/promises";
-import type { Tool } from "./types";
+import type { Tool } from "./types.ts";
 
 export const listFilesTool: Tool = {
   name: "list_files",
   description: "List files and  discription in a given directory",
+
+  parameters: {
+    type: "object",
+    properties: {
+      path: {
+        type: "string",
+        description: "Directory path to list"
+      }
+    },
+    required: ["path"],
+    additionalProperties: false
+  },
 
   async execute(args) {
     const path = args.path;

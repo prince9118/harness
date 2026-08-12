@@ -7,6 +7,19 @@ const execAsync = promisify(exec);
 export const bashTool: Tool = {
   name: "bash",
   description: "Execute a shell command in the project directory",
+  parameters: {
+    type: "object",
+
+    properties: {
+      command: {
+        type: "string"
+      }
+    },
+
+    required: ["command"],
+
+    additionalProperties: false
+  },
 
   async execute(args) {
     const command = args.command;
@@ -19,6 +32,6 @@ export const bashTool: Tool = {
       stderr ? `STDERR: \n${stderr} ` : ""
     ]
       .filter(Boolean)
-      .join("\n");  
+      .join("\n");
   }
 };
