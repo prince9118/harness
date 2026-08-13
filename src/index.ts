@@ -2,6 +2,7 @@ import "dotenv/config";
 import { askUser } from "./cli";
 import { runHarness } from "./harness";
 async function main() {
+  const history: any[] = [];
   while (true) {
     const message = await askUser();
 
@@ -10,7 +11,7 @@ async function main() {
       break;
     }
 
-    const response = await runHarness(message);
+    const response = await runHarness(message, history);
     console.log("\nAssitant:", response);
   }
 }

@@ -18,15 +18,26 @@ IMPORTANT:
 
 const toolExecutor = new ToolExecutor();
 
-export async function runHarness(message: string): Promise<string> {
-  let input: any[] = [
-    {
-      role: "user",
-      content: message
-    }
-  ];
+export async function runHarness(
+  message: string,
+  history: any[]
+): Promise<string> {
+  history.push({
+    role: "user",
+    content: message
+  });
+
+  let input = history;
+  const MAX_ITERATIONS = 25;
+  let iterations = 0;
 
   while (true) {
+    if (++iterations > MAX_ITERATIONS) {
+      throw new Error(
+        `Tool loop exceeded ${MAX_ITERATIONS} iterations -- stopping.`
+      );
+    }
+
     const response = await generateResponse(input, SYSTEM_PROMPT);
 
     const toolCalls = response.output.filter(
@@ -34,6 +45,8 @@ export async function runHarness(message: string): Promise<string> {
     );
 
     if (toolCalls.length === 0) {
+      // save the assistant's final reply so it's remembered next turn.
+      input.push(...response.output);
       return response.output_text;
     }
 
