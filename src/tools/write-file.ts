@@ -6,6 +6,9 @@ export const writeFileTool: Tool = {
 
   description: "Create or overwrite a file with the provided content.",
 
+  pathArgs: ["path"],
+  requiresConfirmation: true,
+
   parameters: {
     type: "object",
     properties: {

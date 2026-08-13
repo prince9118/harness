@@ -1,4 +1,17 @@
 import { tools } from "./registry.js";
+import path from "node:path";
+import inquirer from "inquirer";
+
+  const PROJECT_ROOT = process.cwd();
+
+function assertSafePath(rawPath: string): string {
+  const resolved = path.resolve(PROJECT_ROOT, rawPath);
+  const rootWithSep = PROJECT_ROOT.endsWith(path.sep)
+    ? PROJECT_ROOT  
+    : PROJECT_ROOT + path.sep;
+
+  return "";
+}
 
 export class ToolExecutor {
   async execute(name: string, args: Record<string, unknown>): Promise<string> {

@@ -5,6 +5,7 @@ export const readFileTool: Tool = {
   name: "read_file",
 
   description: "Read the contents of a file.",
+  pathArgs: ["path"],
 
   parameters: {
     type: "object",

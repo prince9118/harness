@@ -7,6 +7,7 @@ const execAsync = promisify(exec);
 export const bashTool: Tool = {
   name: "bash",
   description: "Execute a shell command in the project directory",
+  requiresConfirmation: true,
   parameters: {
     type: "object",
 
