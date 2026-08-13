@@ -168,6 +168,30 @@ At a basic level, the harness maintains a loop between the user, the LLM, and th
                       ↓
                 Final response
 ```
+## Architecture
+
+```text
+User
+ ↓
+CLI
+ ↓
+Harness Loop
+ ↓
+LLM
+ ↓
+Tool Call?
+ ├── No  → Final Answer
+ │
+ └── Yes
+      ↓
+    Tool
+      ↓
+   Result
+      ↓
+ Add to History
+      ↓
+    LLM again
+
 
 The important idea is:
 
