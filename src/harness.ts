@@ -1,6 +1,6 @@
 import { generateResponse } from "./llm.js";
 import { ToolExecutor } from "./tools/tool-executor.js";
-
+import pc from "picocolors";
 const SYSTEM_PROMPT = `
 You are Mini Harness, a coding agent running in a terminal.
 
@@ -40,6 +40,12 @@ export async function runHarness(
 
     const response = await generateResponse(input, SYSTEM_PROMPT);
 
+    // print model text
+
+    if (response.output_text) {
+      console.log(pc.blue(`\nAssistant:${response.output_text}`));
+    }
+
     const toolCalls = response.output.filter(
       (item) => item.type === "function_call"
     );
@@ -55,10 +61,10 @@ export async function runHarness(
 
     for (const toolCall of toolCalls) {
       const args = JSON.parse(toolCall.arguments);
-      console.log(`\n [tool] ${toolCall.name}`);
+      console.log(pc.yellow(`\n [tool] ${toolCall.name}`));
       const result = await toolExecutor.execute(toolCall.name, args);
 
-      console.log(`[tool result]\n${result}`);
+      console.log(pc.green(`[tool result]\n${result}`));
 
       input.push({
         type: "function_call_output",
