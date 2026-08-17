@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import { generateResponse } from "./llm.js";
 import { ToolExecutor } from "./tools/tool-executor.js";
 import pc from "picocolors";
