@@ -1,5 +1,5 @@
 import { readdir } from "node:fs/promises";
-import type { Tool } from "./types.ts";
+import type { Tool } from "./types";
 
 export const listFilesTool: Tool = {
   name: "list_files",

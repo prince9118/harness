@@ -4,6 +4,7 @@ import { runHarness } from "./harness";
 
 async function main() {
   const history: any[] = [];
+  let summary="";
 
   while (true) {
     const message = await askUser();
@@ -27,13 +28,15 @@ async function main() {
 
     if (command === "/clear") {
       history.length = 0;
+      summary="";
       console.log("Conversation cleared.");
       continue;
     }
 
-    const response = await runHarness(message, history);
+    const result = await runHarness(message, history, summary);
+    summary=result.summary;
 
-    console.log("\nAssistant:", response);
+    console.log("\nAssistant:", result.response);
   }
 }
 

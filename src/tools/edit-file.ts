@@ -52,7 +52,7 @@ export const editFileTool: Tool = {
 
     }
     if(occurrences>1){
-        throw new Error(`OldText was found ${oldText} times.It must match exactly one.`)
+        throw new Error(`OldText was found ${oldText} times. It must match exactly one.`)
     }
     const updateContent=content.replace(oldText,newText);
 
