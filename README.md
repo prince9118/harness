@@ -1,389 +1,203 @@
 # Mini Harness
 
-A small **LLM harness built from scratch using TypeScript and Bun** to
-understand how AI coding agents and agent runtimes work internally.
+A coding agent's runtime, built from scratch in TypeScript to understand what
+tools like Claude Code or Cursor's agent mode are actually doing underneath —
+no agent framework, no black box. Every piece — the tool-call loop, the
+sandboxing, the context summarization — is hand-written and small enough to
+read start to finish in one sitting.
 
-The goal of this project is not to build a production-ready AI assistant,
-but to learn the core building blocks behind an LLM agent:
-
-- LLM communication
-- Conversation management
-- System prompts
-- Tool calling
-- Tool execution
-- Agent loops
-- Context management
+> The LLM decides *what* should happen. The harness controls *how* it happens.
 
 ---
 
-When using an AI coding agent, it can feel like the model is directly interacting with your computer.
+## What it actually does
 
-example:
+You get a terminal chat loop backed by the OpenAI Responses API. The model
+can read files, write files, edit files precisely, list directories, search
+file contents, and run shell commands — by asking the harness to do it, never
+directly. Every mutating action is shown to you and requires a yes/no before
+it runs. The conversation persists and self-summarizes as it grows, so long
+sessions don't overflow the model's context or your API budget.
 
-```text
-User
-  ↓
-"Create a TypeScript file"
-  ↓
-LLM
-  ↓
-Decides to use the write tool
-  ↓
-Harness
-  ↓
-Executes the tool
-  ↓
-Tool Result
-  ↓
-LLM
-  ↓
-Final Response
+```
+You: create a fizzbuzz script and run it
+
+[tool] write_file
+[confirm] About to run "write_file": { path: "fizzbuzz.ts", content: "..." }
+Allow this action? (y/N) y
+[tool result] Successfully wrote fizzbuzz.ts
+
+[tool] bash
+[confirm] About to run "bash": { command: "bun run fizzbuzz.ts" }
+Allow this action? (y/N) y
+[tool result] STDOUT: 1 2 Fizz 4 Buzz ...
+
+Assistant: Created fizzbuzz.ts and ran it — output above.
 ```
 
-The **harness is the layer connecting the LLM with the environment and tools**.
+---
 
-This project is an attempt to build that layer from scratch and understand what is actually happening behind an AI agent.
+## Architecture
+
+```
+   User
+    │
+    ▼
+  cli.ts ──────────────────────────  askUser() — one inquirer prompt per turn
+    │
+    ▼
+ index.ts ───────────────────────── owns the REPL: history array, /exit
+    │                                /clear /help, catches per-turn errors
+    ▼
+harness.ts ── runHarness(msg, history, summary)
+    │
+    ├─ buildSystemPrompt()  → injects cwd, OS, top-level file listing
+    ├─ summarizeMessages()  → compresses old turns once history grows
+    │
+    ▼
+  llm.ts ── generateResponse(input, instructions)
+    │            OpenAI Responses API, tool definitions attached
+    ▼
+ tool call? ──No──▶ return final text, save to history
+    │
+   Yes
+    ▼
+tool-executor.ts ── resolves + sandbox-checks paths, asks for confirmation,
+    │                 executes, catches tool errors so one bad call
+    │                 can't crash the loop
+    ▼
+ src/tools/*.ts ── read_file · write_file · edit_file · list_files · grep · bash
+    │
+    ▼
+ result fed back into `input`, loop continues (capped at 25 iterations)
+```
+
+The important boundary is `tool-executor.ts`: individual tools stay dumb —
+they just declare *which* of their arguments are paths and *whether* they
+need confirmation — and the executor is the single place that enforces
+sandboxing and asks the user, so every current and future tool gets both for
+free instead of reimplementing them.
 
 ---
 
-## Tech Stack
+## Project structure
 
-- **TypeScript**
-- **Bun**
-- **OpenAI Responses API**
-- **Commander.js**
-- **dotenv **
-
----
-
-## Project Structure
-
-```text
-mini-harness/
-│
+```
+harness/
 ├── src/
-│   ├── index.ts
-│   ├── cli.ts
-│   ├── harness.ts
-│   ├── llm.ts
-│   ├── types.ts
-│   │
-│   └── conversation/
-│       └── conversation.ts
-│
-├── .env
+│   ├── index.ts                 REPL loop, history array, slash commands
+│   ├── cli.ts                   terminal input (inquirer)
+│   ├── harness.ts                agent loop, system prompt, summarization
+│   ├── llm.ts                    OpenAI Responses API client
+│   ├── types.ts                  shared types
+│   ├── conversation/
+│   │   └── conversation.ts       message-history helper (not currently wired in —
+│   │                              harness.ts threads a plain array instead)
+│   └── tools/
+│       ├── types.ts              Tool contract (parameters, pathArgs, confirm)
+│       ├── registry.ts           tool list handed to the model
+│       ├── tool-executor.ts      sandboxing + confirmation + dispatch
+│       ├── read-file.ts
+│       ├── write-file.ts
+│       ├── edit-file.ts          exact-match single-occurrence replace
+│       ├── list-files.ts
+│       ├── grep.ts               recursive text search, skips node_modules/.git
+│       └── bash.ts               shell exec, timeout + output cap
+├── .env                          OPENAI_API_KEY (gitignored)
 ├── package.json
 ├── tsconfig.json
+├── FUTURE.md                     honest gap list + roadmap
 └── README.md
 ```
 
-### Responsibilities
+---
 
-#### `cli.ts`
+## The tool contract
 
-Handles the command-line interface and receives input from the user.
+Every tool is a plain object — no inheritance, no plugin machinery:
 
-```text
-User → CLI
+```ts
+type Tool = {
+  name: string;
+  description: string;
+  parameters: JSONSchema;          // sent to the model as the function signature
+  pathArgs?: string[];             // which args the executor should sandbox-check
+  requiresConfirmation?: boolean;  // whether the executor should ask first
+  execute: (args) => Promise<string>;
+};
 ```
 
-#### `harness.ts`
+Adding a new tool is: write the object, push it into `registry.ts`. Nothing
+else in the harness has to change — the executor already knows how to
+sandbox and confirm it based on those two flags.
 
-Coordinates the interaction between the CLI, conversation, LLM, and tools.
-
-```text
-CLI
- ↓
-Harness
- ↓
-LLM
-```
-
-#### `llm.ts`
-
-Responsible for communicating with the LLM API.
-
-```text
-Harness
-   ↓
-LLM Client
-   ↓
-OpenAI Responses API
-```
-
-#### `conversation/conversation.ts`
-
-Maintains the conversation history.
-
-```text
-system
- ↓
-user
- ↓
-assistant
- ↓
-user
- ↓
-assistant
-```
-
-This allows the model to receive the relevant context from previous interactions.
-
-#### `types.ts`
-
-Contains TypeScript types and interfaces used throughout the harness.
+| Tool | Confirmation required | Path-sandboxed |
+|---|---|---|
+| `read_file` | no | yes |
+| `write_file` | **yes** | yes |
+| `edit_file` | **yes** | yes |
+| `list_files` | no | no *(see [FUTURE.md](FUTURE.md))* |
+| `grep` | no | n/a — hardcoded to project root |
+| `bash` | **yes** | n/a — arbitrary shell command |
 
 ---
 
-# How a Harness Works
+## Safety model
 
-At a basic level, the harness maintains a loop between the user, the LLM, and the environment.
+The model can suggest anything; the harness decides what's actually allowed
+to happen.
 
-```text
-                 ┌──────────┐
-                 │   User   │
-                 └────┬─────┘
-                      ↓
-                 ┌──────────┐
-                 │   CLI    │
-                 └────┬─────┘
-                      ↓
-                 ┌──────────┐
-                 │ Harness  │
-                 └────┬─────┘
-                      ↓
-                 ┌──────────┐
-                 │   LLM    │
-                 └────┬─────┘
-                      ↓
-                Tool decision
-                      ↓
-                 ┌──────────┐
-                 │  Tools   │
-                 └────┬─────┘
-                      ↓
-                 Tool result
-                      ↓
-                     LLM
-                      ↓
-                Final response
-```
-## Architecture
-
-```text
-User
- ↓
-CLI
- ↓
-Harness Loop
- ↓
-LLM
- ↓
-Tool Call?
- ├── No  → Final Answer
- │
- └── Yes
-      ↓
-    Tool
-      ↓
-   Result
-      ↓
- Add to History
-      ↓
-    LLM again
-
-
-The important idea is:
-
-> The LLM decides what should happen, while the harness controls how it happens.
+- **Confirm before mutating.** `write_file`, `edit_file`, and `bash` all print
+  the exact action and arguments and wait for an explicit `y` before running.
+- **Path sandboxing, enforced once.** `tool-executor.ts` resolves every
+  declared path argument against `process.cwd()` and rejects anything that
+  resolves outside it — blocking `../../` escapes — for every tool that
+  declares `pathArgs`, without each tool re-implementing the check.
+- **Bounded shell execution.** `bash` runs with a 30s timeout and a 200KB
+  output cap; both timeouts and oversized output return a clear message
+  instead of hanging the terminal or flooding the conversation.
+- **Bounded agent loop.** The tool-call loop inside `runHarness` hard-stops
+  after 25 iterations, so a confused model can't spin forever burning API
+  budget.
+- **Tool errors don't crash the loop.** `tool-executor.ts` catches per-tool
+  exceptions and returns them to the model as a normal tool result, so a bad
+  argument becomes something the model can recover from, not a crash.
 
 ---
 
-# Conversation Management
+## Context management
 
-An LLM request is stateless from the perspective of your application unless you provide previous context.
+An LLM call is stateless — the harness is what makes it feel like a
+conversation. `runHarness` maintains a `history` array and re-sends it (plus
+a dynamically-built system prompt) on every turn.
 
-The harness therefore maintains a conversation:
+Left unchecked, that history grows without bound. So once it passes 20
+messages, the oldest ones are compressed: a dedicated LLM call folds them
+into a running `summary` string (goals, decisions, constraints, completed
+work), the raw messages are dropped, and the summary is re-injected as
+context on every later turn instead. The last 10 messages always stay intact
+verbatim — only the older tail gets compressed. This is the actual mechanism
+behind "the agent still remembers what we were doing 40 messages ago"
+without re-sending 40 messages' worth of tokens forever.
 
-```text
-[
-  {
-    role: "system",
-    content: "You are a helpful coding assistant."
-  },
-  {
-    role: "user",
-    content: "Create a hello.ts file."
-  },
-  {
-    role: "assistant",
-    content: "..."
-  }
-]
-```
+## Environment awareness
 
-The conversation can then be sent back to the model on subsequent requests.
-
-This creates the illusion of a continuous conversation while the harness is actually maintaining the state.
+The system prompt isn't static — `buildSystemPrompt()` rebuilds it every
+turn with the current working directory, detected OS, and a fresh top-level
+directory listing, so the model is told where it's operating instead of
+having to guess or ask.
 
 ---
 
-# System Prompt
+## Getting started
 
-The harness can provide instructions to the model before the user interaction.
-
-```text
-system
-  ↓
-user
-  ↓
-assistant
-```
-
-The system prompt defines the model's behavior and can later contain instructions about:
-
-- Available tools
-- Tool usage
-- File system rules
-- Safety restrictions
-- Coding behavior
-- Environment information
-
----
-
-# Tools
-
-The next major part of the harness is **tool execution**.
-
-A coding agent needs more than the ability to generate text.
-
-It needs to interact with the environment.
-
-The initial tools planned for this project are:
-
-```text
-read
-write
-bash
-list
-```
-
-### Read
-
-Read the contents of a file.
-
-```text
-read("src/index.ts")
-```
-
-### Write
-
-Create or modify a file.
-
-```text
-write("src/test.ts", "console.log('hello')")
-```
-
-### Bash
-
-Execute a shell command.
-
-```text
-bash("bun test")
-```
-
-### List
-
-List files and directories.
-
-```text
-list(".")
-```
-
----
-
-# Agent Loop
-
-Once tools are introduced, the harness becomes an agent runtime.
-
-The basic loop looks like:
-
-```text
-User
- ↓
-LLM
- ↓
-Does the model need a tool?
- ├── No → Return response
- │
- └── Yes
-       ↓
-   Execute tool
-       ↓
-   Tool result
-       ↓
-   Add result to conversation
-       ↓
-   Call LLM again
-       ↓
-   Continue
-```
-
-Conceptually:
-
-```text
-while (!finished) {
-
-    response = callLLM(conversation)
-
-    if (response contains tool call) {
-
-        result = executeTool(response)
-
-        conversation.add(result)
-
-    } else {
-
-        return response
-    }
-}
-```
-
-This loop is one of the most important concepts in the project.
-
----
-
----
-
-# Getting Started
-
-## Prerequisites
-
-Install:
-
-- [Bun](https://bun.sh/)
-- An OpenAI API key
-
----
-
-## Installation
-
-Clone the repository:
+**Prerequisites:** [Bun](https://bun.sh/) and an OpenAI API key.
 
 ```bash
 git clone <your-repository-url>
-cd mini-harness
-```
-
-Install dependencies:
-
-```bash
+cd harness
 bun install
 ```
-
----
-
-## Environment Variables
 
 Create a `.env` file:
 
@@ -391,48 +205,37 @@ Create a `.env` file:
 OPENAI_API_KEY=your_api_key_here
 ```
 
-Never commit your `.env` file.
-
-Add it to `.gitignore`:
-
-```text
-.env
-```
-
----
-
-## Run the Project
-
-```bash
-bun run src/index.ts
-```
-
-Or, if using the configured script:
+Run it:
 
 ```bash
 bun run dev
 ```
 
----
+Slash commands available in the REPL: `/help`, `/clear` (wipes history and
+summary), `/exit`.
 
 ---
 
-# Philosophy
+## Tech stack
 
-This project is being built **from first principles**.
+| Piece | Choice |
+|---|---|
+| Language | TypeScript, run directly via Bun (no build step) |
+| Model API | OpenAI Responses API (`openai` SDK) |
+| CLI input | `inquirer` |
+| Terminal color | `picocolors` |
+| Env config | `dotenv` |
 
-Instead of starting with an existing agent framework, the goal is to implement the fundamental pieces manually and understand what each abstraction actually does.
+---
 
-```text
-LLM
- ↓
-Conversation
- ↓
-Tools
- ↓
-Execution
- ↓
-Agent Loop
- ↓
-Harness
-```
+## What this project is for
+
+This isn't meant to compete with a production agent framework — it's meant
+to be small enough that every layer is legible: how tool-calling actually
+works over the wire, why sandboxing has to live in one shared place instead
+of per-tool, and why "remembering everything" eventually requires
+summarization instead of just sending more tokens. Each of those was built
+as a deliberate, separable step rather than pulled in from a library.
+
+The honest list of what's still rough — a couple of small bugs, missing
+tests, and where this goes next — is in [FUTURE.md](FUTURE.md).
