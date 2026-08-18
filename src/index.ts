@@ -1,9 +1,11 @@
 import "dotenv/config";
+import pc from "picocolors";
 import { askUser } from "./cli";
 import { runHarness } from "./harness";
+import type { Message } from "./types.js";
 
 async function main() {
-  const history: any[] = [];
+  const history: Message[] = [];
   let summary="";
 
   while (true) {
@@ -33,10 +35,19 @@ async function main() {
       continue;
     }
 
-    const result = await runHarness(message, history, summary);
-    summary=result.summary;
+    try {
+      const result = await runHarness(message, history, summary);
+      summary = result.summary;
 
-    console.log("\nAssistant:", result.response);
+      console.log("\nAssistant:", result.response);
+    } catch (error) {
+      // An API error, a network blip, or hitting MAX_ITERATIONS throws out
+      // of runHarness. Without this, that exception is uncaught here and
+      // kills the whole process -- taking the conversation history with it.
+      // Report it and keep the loop (and history) alive instead.
+      const messageText = error instanceof Error ? error.message : String(error);
+      console.log(pc.red(`\n[error] ${messageText}`));
+    }
   }
 }
 

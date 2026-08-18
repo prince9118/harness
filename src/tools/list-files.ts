@@ -4,6 +4,7 @@ import type { Tool } from "./types";
 export const listFilesTool: Tool = {
   name: "list_files",
   description: "List files and  discription in a given directory",
+  pathArgs: ["path"],
 
   parameters: {
     type: "object",

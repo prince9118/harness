@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import { generateResponse } from "./llm.js";
 import { ToolExecutor } from "./tools/tool-executor.js";
 import pc from "picocolors";
-import { Content } from "openai/resources/skills.mjs";
+import type { Message } from "./types.js";
 // const SYSTEM_PROMPT = `
 // You are Mini Harness, a coding agent running in a terminal.
 
@@ -27,7 +27,7 @@ const RECENT_MESSAGES = 10;
 
 async function summarizeMessages(
   previousSummary: string,
-  messages: any[]
+  messages: Message[]
 ): Promise<string> {
   const prompt = `
   You maintain a compact memory of a conversation.
@@ -117,7 +117,7 @@ async function buildSystemPrompt(): Promise<string> {
 
 export async function runHarness(
   message: string,
-  history: any[],
+  history: Message[],
   summary: string
 ): Promise<{
   response: string;
@@ -142,14 +142,14 @@ export async function runHarness(
   const systemPrompt = await buildSystemPrompt();
 
   // let input = history;
-  let input = [
+  let input: Message[] = [
     ...(summary
-      ? [
+      ? ([
           {
             role: "user",
             content: `Conversation memory:\n${summary}`
           }
-        ]
+        ] satisfies Message[])
       : []),
     ...history
   ];
@@ -166,11 +166,12 @@ export async function runHarness(
 
     const response = await generateResponse(input, systemPrompt);
 
-    // print model text
-
-    // if (response.output_text) {
-    //   console.log(pc.blue(`\nAssistant:${response.output_text}`));
-    // }
+    // The Responses API's own types allow response.output (ResponseOutputItem[])
+    // to be fed straight back in as the next call's input, which is exactly
+    // what we do below -- the two unions just disagree on one unused corner
+    // (computer-tool-call "failed" status), so we assert instead of widening
+    // Message back to `any`.
+    const outputItems = response.output as unknown as Message[];
 
     const toolCalls = response.output.filter(
       (item) => item.type === "function_call"
@@ -178,8 +179,10 @@ export async function runHarness(
 
     if (toolCalls.length === 0) {
       // save the assistant's final reply so it's remembered next turn.
-      input.push(...response.output);
-      history.push(...response.output);
+      // (index.ts prints this via the returned `response` field, so don't
+      // print it here too -- that would double it up.)
+      input.push(...outputItems);
+      history.push(...outputItems);
 
       return {
         response: response.output_text,
@@ -187,8 +190,14 @@ export async function runHarness(
       };
     }
 
+    // The model narrated something before/between tool calls on this turn.
+    // It won't appear in the final answer, so print it now or it's lost.
+    if (response.output_text) {
+      console.log(pc.blue(`\nAssistant:${response.output_text}`));
+    }
+
     // Preserve the model's output items.
-    input.push(...response.output);
+    input.push(...outputItems);
 
     for (const toolCall of toolCalls) {
       const args = JSON.parse(toolCall.arguments);

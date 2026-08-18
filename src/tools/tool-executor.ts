@@ -59,7 +59,7 @@ export class ToolExecutor {
           return `Skipped: user declined to run '${name}'.`;
         }
       }
-      return await tool.execute(args);
+      return await tool.execute(safeArgs);
     } catch (error) {
       if (error instanceof Error) {
         return `Tool error: ${error.message}`;
