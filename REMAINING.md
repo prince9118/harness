@@ -65,18 +65,3 @@ Pick a runner (`bun test` needs nothing extra installed — it's built in).
 - Typos worth a pass: `list-files.ts`'s description ("discription" instead
   of "description", double space), `edit-file.ts`'s `newText` description
   ("replae" instead of "replace").
-
-## 4. Optional, only if you have time — makes the demo itself stronger
-
-- Do one real end-to-end run (`bun run dev`) before showing it live —
-  everything here passed `tsc --noEmit`, but it hasn't been smoke-tested
-  against a live OpenAI call since the last round of edits.
-- Pick 1–2 items from `FUTURE.md`'s "where to take it after stage 7" list
-  (streaming output and provider abstraction are the two with the best
-  effort-to-impressiveness ratio) if you want a "and here's what I'd do
-  next" answer that isn't just "write tests."
-
----
-
-**Bottom line:** items 1 and 2 are the actual gap between "solid side
-project" and "resume-ready." Everything else is polish.
